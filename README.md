@@ -115,10 +115,13 @@ flow is required.
 
 ## Design decisions worth calling out
 
-- **`env_file` instead of inline env vars.** The Argon2 admin-token hash contains
-  `$` characters, which Docker Compose would try to interpolate (the classic
-  `$` → `$$` escaping trap). Loading secrets via `env_file` passes them to the
-  container verbatim — no escaping, no foot-gun.
+- **Argon2 admin token `$` escaping.** The token hash is a PHC string full of `$`.
+  This host's Docker Compose interpolates `env_file` values, so every `$` is
+  **doubled to `$$`** in `.env`; after interpolation the container receives the
+  original hash. This is verified at deploy time with
+  `docker exec vaultwarden printenv ADMIN_TOKEN` (must be a valid 6-field
+  `$argon2id$…` string). A plaintext token would avoid the escaping but is kept
+  as a hash so a leak of `.env` never yields a usable admin credential.
 - **SQLite `.backup`, not `cp`.** A raw copy of a live SQLite file can be torn;
   `.backup` produces a consistent snapshot.
 - **Encrypt to a public key.** Backups are `age`-encrypted to a public key; the

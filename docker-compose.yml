@@ -3,8 +3,9 @@ services:
     image: vaultwarden/server:1.36.0   # pinned; confirm latest stable on Docker Hub before deploy
     container_name: vaultwarden
     restart: unless-stopped
-    # Secrets (ADMIN_TOKEN etc.) are passed via env_file so Docker Compose does
-    # NOT interpolate them — this sidesteps the Argon2 "$" -> "$$" escaping trap.
+    # Secrets (ADMIN_TOKEN etc.) are passed via env_file. NOTE: this host's
+    # Compose interpolates env_file values, so the Argon2 ADMIN_TOKEN must have
+    # every "$" doubled to "$$" in .env (see .env.example).
     env_file: .env
     environment:
       # DOMAIN must be a full URL; built from the bare host in .env.
