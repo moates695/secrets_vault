@@ -107,6 +107,29 @@ cp backup/vaultwarden-backup.{service,timer} /etc/systemd/system/
 systemctl daemon-reload && systemctl enable --now vaultwarden-backup.timer
 ```
 
+**rclone off-site remote (`offsite:`).** On this shared host the remote reuses the
+existing DigitalOcean Spaces key (bucket `gym-junkie-01`, region `syd1`) that the
+gymjunkie DB backup already uses. That key is **bucket-scoped and cannot create
+buckets**, so the remote **must** set `no_check_bucket = true` — otherwise rclone's
+pre-flight bucket check issues a `CreateBucket` that Spaces rejects with
+`403 AccessDenied` on *every* upload (the object PUT never runs). Minimum working
+config (`/root/.config/rclone/rclone.conf`):
+
+```ini
+[offsite]
+type = s3
+provider = DigitalOcean
+region = syd1
+endpoint = syd1.digitaloceanspaces.com
+no_check_bucket = true
+access_key_id = <spaces key>
+secret_access_key = <spaces secret>
+```
+
+Verify with `rclone copy <file> offsite:gym-junkie-01/vaultwarden-backups/` before
+enabling the timer. If a future host mints a **dedicated** key with create rights,
+`no_check_bucket` can be dropped.
+
 ### DNS / Cloudflare
 
 Add an **A record** for `vault.<domain>` pointing at the droplet's public IP, set

@@ -15,7 +15,7 @@ set -euo pipefail
 DATA_DIR="/opt/vaultwarden/vw-data"
 BACKUP_DIR="/opt/vaultwarden/backups"
 AGE_PUBKEY_FILE="/opt/vaultwarden/backup-age.pub"    # public key only ever lives here
-RCLONE_REMOTE="offsite:vaultwarden-backups"           # configured via `rclone config`
+RCLONE_REMOTE="offsite:gym-junkie-01/vaultwarden-backups"  # bucket/prefix; remote configured via `rclone config`
 LOCAL_RETENTION_DAYS=14
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
