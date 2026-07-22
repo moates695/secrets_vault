@@ -11,24 +11,14 @@ services:
       DOMAIN: "https://${DOMAIN}"
     volumes:
       - ./vw-data:/data
-    networks: [ vw-net ]
-
-  caddy:
-    image: caddy:2
-    container_name: caddy
-    restart: unless-stopped
-    # Only Caddy publishes ports. Vaultwarden is never exposed directly.
-    ports:
-      - "80:80"
-      - "443:443"
-    # Passes DOMAIN and ACME_EMAIL into the container for the Caddyfile's
-    # {$DOMAIN} / {$ACME_EMAIL} placeholders.
-    env_file: .env
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./caddy-data:/data
-      - ./caddy-config:/config
-    networks: [ vw-net ]
+    # No published ports: the existing nginx-proxy-prod reaches this container
+    # by name over the shared network below. Vaultwarden is never exposed directly.
+    networks: [ proxy-net ]
 
 networks:
-  vw-net:
+  # The network that nginx-proxy-prod is attached to, created by the
+  # gym_junkie_server compose project. Declared external so we join it
+  # rather than creating a new one.
+  proxy-net:
+    external: true
+    name: backend-prod_api-network

@@ -17,32 +17,44 @@ backups.
 
 ## Architecture
 
+Vaultwarden runs on a **shared host** that already has an nginx reverse proxy
+(fronted by Cloudflare in proxied mode) terminating TLS for other services. Rather
+than run a second proxy, Vaultwarden integrates behind the existing one.
+
 ```
-Internet ──443──▶ Caddy (TLS, Let's Encrypt) ──▶ vaultwarden:80  (internal Docker network)
-                                                      │
-                                                 ./vw-data (host bind-mount:
-                                                 db.sqlite3, attachments, config, rsa keys)
+Internet ──▶ Cloudflare (proxied) ──443──▶ nginx-proxy (existing)
+                                              │  TLS: wildcard Cloudflare Origin cert
+                                              │  vhost: vault.<domain>
+                                              ▼
+                                         vaultwarden:80   (shared Docker network, no host ports)
+                                              │
+                                         ./vw-data (host bind-mount:
+                                         db.sqlite3, attachments, config, rsa keys)
 ```
 
-- **Caddy** is the only container that publishes ports (80/443) and terminates
-  TLS with an automatically provisioned & renewed Let's Encrypt certificate.
-- **Vaultwarden** is never exposed to the public interface; it listens only on
-  the internal Docker network.
+- **No bundled reverse proxy.** The Vaultwarden container publishes **no host
+  ports**; it joins the existing proxy's Docker network and is reached by name.
+- **TLS** is terminated at the existing nginx using a wildcard **Cloudflare Origin
+  certificate**; the `vault.<domain>` record is **proxied (orange cloud)**.
 - All persistent state lives in the `vw-data` bind-mount on the droplet's **main
   disk** (not an attached block volume — those are excluded from DigitalOcean
   droplet backups).
+
+> A standalone variant (Caddy + Let's Encrypt, for a *dedicated* droplet) is
+> described in [`docs/handoff.md`](docs/handoff.md); this repo implements the
+> integrated variant for a shared host.
 
 ## Repository layout
 
 | Path | Purpose |
 |---|---|
-| `docker-compose.yml` | Vaultwarden + Caddy services |
+| `docker-compose.yml` | Vaultwarden service only; joins the existing proxy network |
 | `.env.example` | Template for the git-ignored `.env` (copy & fill on the droplet) |
-| `Caddyfile` | Reverse proxy + automatic HTTPS; reads `{$DOMAIN}` / `{$ACME_EMAIL}` |
+| `nginx/vault.moates.com.au.conf` | vhost block to append to the existing nginx template |
 | `backup/backup.sh` | Daily app-consistent, `age`-encrypted, off-site backup |
 | `backup/vaultwarden-backup.{service,timer}` | systemd units to run it daily |
 | `fail2ban/` | Filters + jail for failed user and `/admin` logins |
-| `docs/handoff.md` | Full deployment specification |
+| `docs/handoff.md` | Original full specification (standalone variant) |
 
 ## Security model
 
@@ -63,40 +75,43 @@ Full ordered runbook is in [`docs/handoff.md`](docs/handoff.md). In brief, on th
 droplet under `/opt/vaultwarden`:
 
 ```bash
-# 1. Base hardening: apt upgrade, non-root deploy user, UFW (OpenSSH/80/443 only)
-# 2. Install Docker Engine + Compose plugin
-# 3. Clone this repo into /opt/vaultwarden
-git clone git@github.com:moates695/secrets_vault.git /opt/vaultwarden
+# Docker Engine + Compose are assumed already present on the shared host.
+# 1. Clone this repo into /opt/vaultwarden
+git clone git@github.com:moates695/secrets_vault.git /opt/vaultwarden && cd /opt/vaultwarden
 
-# 4. Create the real environment file (never committed)
+# 2. Create the real environment file (never committed)
 cp .env.example .env
 #    Generate the admin token hash and paste it into .env:
 docker run --rm -it vaultwarden/server:1.36.0 /vaultwarden hash
-nano .env            # set DOMAIN, ACME_EMAIL, ADMIN_TOKEN, ...
+nano .env            # set DOMAIN, ADMIN_TOKEN, ...
 
-# 5. Bring it up (needs DNS A record + open 80/443 for the ACME challenge)
+# 3. Bring up the Vaultwarden container (joins the existing proxy network, no host ports)
 docker compose up -d
 
-# 6. Register the super-admin account, create the Organization + Collections,
+# 4. Add the vault vhost to the existing nginx and reload (zero-downtime):
+#    append nginx/vault.moates.com.au.conf to the proxy's template, then
+#    re-render + validate + reload inside the nginx container.
+
+# 5. Register the super-admin account, create the Organization + Collections,
 #    then set SIGNUPS_ALLOWED=false in .env and `docker compose up -d`.
 
-# 7. Install fail2ban assets
+# 6. Install fail2ban assets
 cp fail2ban/filter.d/*.conf /etc/fail2ban/filter.d/
 cp fail2ban/jail.d/vaultwarden.local /etc/fail2ban/jail.d/
 systemctl restart fail2ban        # ensure the default [sshd] jail is enabled too
 
-# 8. Install the backup timer (after `rclone config` + placing backup-age.pub)
+# 7. Install the backup timer (after `rclone config` + placing backup-age.pub)
 cp backup/vaultwarden-backup.{service,timer} /etc/systemd/system/
 systemctl daemon-reload && systemctl enable --now vaultwarden-backup.timer
 ```
 
 ### DNS / Cloudflare
 
-Point an **A record** for your host at the droplet's public IP. If the domain is
-on Cloudflare, set the record to **DNS-only (grey cloud)** so Caddy can complete
-the Let's Encrypt challenge and serve its own certificate. A proxied (orange)
-record terminates TLS at Cloudflare and will break the ACME flow unless you switch
-to a DNS-01 challenge or a Cloudflare Origin certificate.
+Add an **A record** for `vault.<domain>` pointing at the droplet's public IP, set
+to **Proxied (orange cloud)** to match the other services on this host. TLS is
+handled at the origin by nginx using the existing wildcard **Cloudflare Origin
+certificate**, which already covers this subdomain — no new certificate or ACME
+flow is required.
 
 ## Design decisions worth calling out
 
@@ -134,8 +149,10 @@ docker compose start vaultwarden
 
 ## Acceptance criteria
 
-See [`docs/handoff.md` §9](docs/handoff.md). Highlights: valid Let's Encrypt cert
-with HTTP→HTTPS redirect; official mobile & desktop clients connect; shared
-Collection visible only to intended members; per-item password history; signups
-closed after setup; `/admin` gated by token; UFW limited to 22/80/443; fail2ban
-jails active; both backup layers verified including a successful test restore.
+See [`docs/handoff.md` §9](docs/handoff.md) (adapted for the integrated variant).
+Highlights: `https://vault.<domain>` serves the web vault with a valid cert and
+HTTP→HTTPS redirect; official mobile & desktop clients connect; shared Collection
+visible only to intended members; per-item password history; signups closed after
+setup; `/admin` gated by token; the existing sites (gymjunkie/chat/mcp) remain
+unaffected; fail2ban jails active; both backup layers verified including a
+successful test restore.
