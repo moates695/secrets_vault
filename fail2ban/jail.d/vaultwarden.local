@@ -1,23 +1,31 @@
-# Copy to /etc/fail2ban/jail.d/vaultwarden.local on the droplet.
-# Copy the two filters to /etc/fail2ban/filter.d/ then `systemctl restart fail2ban`.
+# NOT ENABLED in this (Cloudflare + Docker) deployment — see why below.
 #
-# Bans are applied at the host firewall. Because Caddy is the only thing
-# talking to Vaultwarden, the real client IP is present in Vaultwarden's log.
-
-[vaultwarden]
-enabled  = true
-port     = http,https
-filter   = vaultwarden
-logpath  = /opt/vaultwarden/vw-data/vaultwarden.log
-maxretry = 5
-findtime = 600
-bantime  = 3600
-
-[vaultwarden-admin]
-enabled  = true
-port     = http,https
-filter   = vaultwarden-admin
-logpath  = /opt/vaultwarden/vw-data/vaultwarden.log
-maxretry = 3
-findtime = 600
-bantime  = 86400
+# An iptables fail2ban jail cannot correctly protect the Vaultwarden HTTP
+# endpoints here:
+#   1. Docker publishes the proxy's ports via DNAT, so traffic is evaluated in
+#      the FORWARD/DOCKER chains, NOT INPUT where fail2ban inserts bans.
+#   2. Cloudflare proxies the site, so the packet source is a Cloudflare edge IP;
+#      the real client only appears in the CF-Connecting-IP header. An IP ban
+#      would ban Cloudflare, not the attacker.
+#
+# The HTTP layer is instead protected by nginx rate-limiting keyed on the real
+# client IP (see nginx/vault.moates.com.au.conf) and, recommended, a Cloudflare
+# rate-limit rule at the edge. The filters below are kept for reference / for a
+# deployment that terminates TLS directly (no Cloudflare, host networking).
+#
+# If you DID run Vaultwarden without Cloudflare and with host networking, you
+# could enable these (pointing logpath at vw-data/vaultwarden.log):
+#
+# [vaultwarden]
+# enabled  = true
+# filter   = vaultwarden
+# logpath  = /opt/vaultwarden/vw-data/vaultwarden.log
+# maxretry = 5
+# bantime  = 1h
+#
+# [vaultwarden-admin]
+# enabled  = true
+# filter   = vaultwarden-admin
+# logpath  = /opt/vaultwarden/vw-data/vaultwarden.log
+# maxretry = 3
+# bantime  = 24h

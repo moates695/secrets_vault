@@ -53,7 +53,8 @@ Internet ──▶ Cloudflare (proxied) ──443──▶ nginx-proxy (existing
 | `nginx/vault.moates.com.au.conf` | vhost block to append to the existing nginx template |
 | `backup/backup.sh` | Daily app-consistent, `age`-encrypted, off-site backup |
 | `backup/vaultwarden-backup.{service,timer}` | systemd units to run it daily |
-| `fail2ban/` | Filters + jail for failed user and `/admin` logins |
+| `fail2ban/jail.d/sshd.local` | Host SSH brute-force jail (the layer where iptables bans work) |
+| `fail2ban/filter.d/*`, `jail.d/vaultwarden.local` | Reference filters; the HTTP jail is **not** used here (see file) |
 | `docs/handoff.md` | Original full specification (standalone variant) |
 
 ## Security model
@@ -95,10 +96,11 @@ docker compose up -d
 # 5. Register the super-admin account, create the Organization + Collections,
 #    then set SIGNUPS_ALLOWED=false in .env and `docker compose up -d`.
 
-# 6. Install fail2ban assets
-cp fail2ban/filter.d/*.conf /etc/fail2ban/filter.d/
-cp fail2ban/jail.d/vaultwarden.local /etc/fail2ban/jail.d/
-systemctl restart fail2ban        # ensure the default [sshd] jail is enabled too
+# 6. Install fail2ban (sshd jail). The vault HTTP layer is protected by nginx
+#    rate-limiting on the real client IP, not an iptables jail — see
+#    fail2ban/jail.d/vaultwarden.local for why.
+cp fail2ban/jail.d/sshd.local /etc/fail2ban/jail.d/
+systemctl enable --now fail2ban && systemctl restart fail2ban
 
 # 7. Install the backup timer (after `rclone config` + placing backup-age.pub)
 cp backup/vaultwarden-backup.{service,timer} /etc/systemd/system/
