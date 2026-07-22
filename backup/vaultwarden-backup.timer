@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the Vaultwarden backup daily
+
+[Timer]
+# Daily at 03:17 UTC, with a randomised delay to avoid thundering-herd on the
+# off-site provider. Persistent=true runs a missed backup after downtime.
+OnCalendar=*-*-* 03:17:00 UTC
+RandomizedDelaySec=900
+Persistent=true
+
+[Install]
+WantedBy=timers.target

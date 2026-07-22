@@ -1,0 +1,16 @@
+[Unit]
+Description=Vaultwarden application-consistent encrypted off-site backup
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/vaultwarden/backup/backup.sh
+# Backup runs as root (needs read access to vw-data owned by the container UID).
+User=root
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+[Install]
+WantedBy=multi-user.target

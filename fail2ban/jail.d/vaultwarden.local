@@ -1,0 +1,23 @@
+# Copy to /etc/fail2ban/jail.d/vaultwarden.local on the droplet.
+# Copy the two filters to /etc/fail2ban/filter.d/ then `systemctl restart fail2ban`.
+#
+# Bans are applied at the host firewall. Because Caddy is the only thing
+# talking to Vaultwarden, the real client IP is present in Vaultwarden's log.
+
+[vaultwarden]
+enabled  = true
+port     = http,https
+filter   = vaultwarden
+logpath  = /opt/vaultwarden/vw-data/vaultwarden.log
+maxretry = 5
+findtime = 600
+bantime  = 3600
+
+[vaultwarden-admin]
+enabled  = true
+port     = http,https
+filter   = vaultwarden-admin
+logpath  = /opt/vaultwarden/vw-data/vaultwarden.log
+maxretry = 3
+findtime = 600
+bantime  = 86400

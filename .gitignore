@@ -1,0 +1,25 @@
+# ── Secrets & runtime state — MUST NEVER be committed ──────────────────
+# Real deployment values live only on the droplet, never in git history.
+.env
+*.env
+!.env.example
+
+# Cryptographic material
+*.key
+*.pem
+backup-age.key
+backup-age.pub
+rclone.conf
+
+# Vaultwarden runtime data (SQLite db, attachments, rsa keys, config.json)
+vw-data/
+caddy-data/
+caddy-config/
+backups/
+
+# Generated Caddyfile if templated locally
+Caddyfile.local
+
+# OS / editor cruft
+.DS_Store
+*.swp
